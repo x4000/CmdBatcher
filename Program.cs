@@ -310,6 +310,7 @@ public class MainForm : Form
     List<ProcessSlot> _slots = new();
     List<CommandCard> _cards = new();
     int _selectedIndex = -1;
+    int _outputLineCount;
     bool _dirty;
 
     FlowLayoutPanel _listPanel;
@@ -322,8 +323,8 @@ public class MainForm : Form
         Text = "Cmd Batcher";
         BackColor = Bg;
         ForeColor = FgMain;
-        Size = new Size(1200, 760);
-        MinimumSize = new Size(850, 500);
+        Size = new Size(1600, 760);
+        MinimumSize = new Size(1000, 500);
         Font = new Font("Segoe UI", 10);
         StartPosition = FormStartPosition.CenterScreen;
 
@@ -397,11 +398,21 @@ public class MainForm : Form
             Dock = DockStyle.Fill,
             Orientation = Orientation.Vertical,
             BackColor = Bg,
-            SplitterDistance = 540,
             SplitterWidth = 6,
+            Width = 1600,
+            Panel1MinSize = 450,
+            Panel2MinSize = 400,
         };
         split.Panel1.BackColor = Bg;
         split.Panel2.BackColor = Bg;
+
+        // Set splitter position after layout so percentages work correctly
+        split.SplitterDistance = 480;
+        Shown += (object? s, EventArgs a) =>
+        {
+            // Give left panel ~35% of width, output gets ~65%
+            split.SplitterDistance = (int)(split.ClientSize.Width * 0.35);
+        };
 
         // Left: scrollable card list
         _listPanel = new FlowLayoutPanel
@@ -510,6 +521,7 @@ public class MainForm : Form
     void SelectCard(int index)
     {
         _selectedIndex = index;
+        _outputLineCount = 0; // force full refresh of output pane
         for (int i = 0; i < _cards.Count; i++)
             _cards[i].Selected = (i == index);
     }
@@ -636,15 +648,26 @@ public class MainForm : Form
                 _ => FgDim,
             };
 
-            StringBuilder sb = new StringBuilder();
-            foreach (string line in slot.OutputLines)
-                sb.AppendLine(line);
-
-            string current = _outputBox.Text;
-            string next = sb.ToString();
-            if (current != next)
+            int totalLines = slot.OutputLines.Count;
+            if (totalLines != _outputLineCount)
             {
-                _outputBox.Text = next;
+                if (_outputLineCount == 0)
+                {
+                    // Full refresh (new selection or first output)
+                    StringBuilder sb = new StringBuilder();
+                    foreach (string line in slot.OutputLines)
+                        sb.AppendLine(line);
+                    _outputBox.Text = sb.ToString();
+                }
+                else
+                {
+                    // Append only new lines
+                    StringBuilder sb = new StringBuilder();
+                    for (int n = _outputLineCount; n < totalLines; n++)
+                        sb.AppendLine(slot.OutputLines[n]);
+                    _outputBox.AppendText(sb.ToString());
+                }
+                _outputLineCount = totalLines;
                 _outputBox.SelectionStart = _outputBox.TextLength;
                 _outputBox.ScrollToCaret();
             }

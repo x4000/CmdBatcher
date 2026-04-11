@@ -148,10 +148,10 @@ public class CommandCard : Panel
         };
 
         labelBox = MakeInput(slot.Preset.Label, new Font("Segoe UI Semibold", 11), FgAccent);
-        labelBox.Location = new Point(32, 8);
+        labelBox.Location = new Point(52, 8);
         labelBox.TextChanged += (object? s, EventArgs a) => { slot.Preset.Label = labelBox.Text; OnChanged?.Invoke(); };
 
-        Button btnRun  = MakeBtn("Run", FgGreen, 36, 26);
+        Button btnRun  = MakeBtn("Run", FgGreen, 42, 26);
         Button btnStop = MakeBtn("Stop", FgRed, 42, 26);
         Button btnPeek = MakeBtn("Peek", FgMain, 42, 26);
 
@@ -167,7 +167,7 @@ public class CommandCard : Panel
             Location = new Point(10, 44),
         };
         folderBox = MakeInput(slot.Preset.Folder, new Font("Cascadia Mono", 9), FgMain);
-        folderBox.Location = new Point(42, 42);
+        folderBox.Location = new Point(52, 42);
         folderBox.TextChanged += (object? s, EventArgs a) => { slot.Preset.Folder = folderBox.Text; OnChanged?.Invoke(); };
 
         Button btnBrowse = MakeBtn("...", FgMain, 36, 24);
@@ -186,7 +186,7 @@ public class CommandCard : Panel
             Location = new Point(10, 70),
         };
         cmdBox = MakeInput(slot.Preset.Command, new Font("Cascadia Mono", 9), FgYellow);
-        cmdBox.Location = new Point(42, 68);
+        cmdBox.Location = new Point(52, 68);
         cmdBox.TextChanged += (object? s, EventArgs a) => { slot.Preset.Command = cmdBox.Text; OnChanged?.Invoke(); };
 
         // Row 3: status + time + remove
@@ -256,8 +256,8 @@ public class CommandCard : Panel
     TextBox MakeInput(string text, Font font, Color fg) => new TextBox
     {
         Text = text, Font = font, ForeColor = fg,
-        BackColor = BgInput, BorderStyle = BorderStyle.None,
-        Height = 22,
+        BackColor = BgInput, BorderStyle = BorderStyle.FixedSingle,
+        Height = 50
     };
 
     Button MakeBtn(string text, Color fg, int width, int height) => new Button
@@ -381,9 +381,10 @@ public class MainForm : Form
         {
             Dock = DockStyle.Right,
             FlowDirection = FlowDirection.RightToLeft,
-            AutoSize = true,
+            AutoSize = false,
             BackColor = Bg,
             Padding = new Padding(0, 6, 8, 0),
+            Width = 300
         };
         btnPanel.Controls.Add(btnStopAll);
         btnPanel.Controls.Add(btnRunAll);

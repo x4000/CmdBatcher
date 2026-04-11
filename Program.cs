@@ -38,7 +38,7 @@ public class ProcessSlot
     public bool DrainQueue()
     {
         bool any = false;
-        while (OutputQueue.TryDequeue(out var line))
+        while (OutputQueue.TryDequeue(out string? line))
         {
             OutputLines.Add(line);
             if (OutputLines.Count > MaxLines)
@@ -53,8 +53,8 @@ public class ProcessSlot
         get
         {
             if (StartTime == null) return "";
-            var end = EndTime ?? DateTime.Now;
-            var span = end - StartTime.Value;
+            DateTime end = EndTime ?? DateTime.Now;
+            TimeSpan span = end - StartTime.Value;
             string t = span.TotalHours >= 1
                 ? $"{(int)span.TotalHours}h {span.Minutes:D2}m {span.Seconds:D2}s"
                 : span.TotalMinutes >= 1
@@ -71,12 +71,19 @@ public class ProcessSlot
 public static class PresetStore
 {
     static readonly string Path = System.IO.Path.Combine(
+        AppContext.BaseDirectory, "_user_session.json");
+
+    static readonly string LegacyPath = System.IO.Path.Combine(
         AppContext.BaseDirectory, "cmdbatcher_presets.json");
 
     public static List<CommandPreset> Load()
     {
         try
         {
+            // Migrate legacy file if new one doesn't exist yet
+            if (!File.Exists(Path) && File.Exists(LegacyPath))
+                File.Move(LegacyPath, Path);
+
             if (File.Exists(Path))
                 return JsonSerializer.Deserialize<List<CommandPreset>>(
                     File.ReadAllText(Path)) ?? new();
@@ -142,43 +149,45 @@ public class CommandCard : Panel
 
         labelBox = MakeInput(slot.Preset.Label, new Font("Segoe UI Semibold", 11), FgAccent);
         labelBox.Location = new Point(32, 8);
-        labelBox.TextChanged += (_, _) => { slot.Preset.Label = labelBox.Text; OnChanged?.Invoke(); };
+        labelBox.TextChanged += (object? s, EventArgs a) => { slot.Preset.Label = labelBox.Text; OnChanged?.Invoke(); };
 
-        var btnRun  = MakeBtn("▶", FgGreen, 3);
-        var btnStop = MakeBtn("■", FgRed, 3);
-        var btnPeek = MakeBtn("👁", FgMain, 3);
+        Button btnRun  = MakeBtn("Run", FgGreen, 36, 26);
+        Button btnStop = MakeBtn("Stop", FgRed, 42, 26);
+        Button btnPeek = MakeBtn("Peek", FgMain, 42, 26);
 
-        btnRun.Click  += (_, _) => OnRun?.Invoke();
-        btnStop.Click += (_, _) => OnStop?.Invoke();
-        btnPeek.Click += (_, _) => OnPeek?.Invoke();
+        btnRun.Click  += (object? s, EventArgs a) => OnRun?.Invoke();
+        btnStop.Click += (object? s, EventArgs a) => OnStop?.Invoke();
+        btnPeek.Click += (object? s, EventArgs a) => OnPeek?.Invoke();
 
         // Row 1: folder
-        var folderIcon = new Label
+        Label folderIcon = new Label
         {
-            Text = "📂", BackColor = BgCard, ForeColor = FgDim,
-            AutoSize = true, Location = new Point(10, 42),
+            Text = "Dir:", BackColor = BgCard, ForeColor = FgDim,
+            Font = new Font("Segoe UI", 9), AutoSize = true,
+            Location = new Point(10, 44),
         };
         folderBox = MakeInput(slot.Preset.Folder, new Font("Cascadia Mono", 9), FgMain);
-        folderBox.Location = new Point(32, 42);
-        folderBox.TextChanged += (_, _) => { slot.Preset.Folder = folderBox.Text; OnChanged?.Invoke(); };
+        folderBox.Location = new Point(42, 42);
+        folderBox.TextChanged += (object? s, EventArgs a) => { slot.Preset.Folder = folderBox.Text; OnChanged?.Invoke(); };
 
-        var btnBrowse = MakeBtn("…", FgMain, 3);
-        btnBrowse.Click += (_, _) =>
+        Button btnBrowse = MakeBtn("...", FgMain, 36, 24);
+        btnBrowse.Click += (object? s, EventArgs a) =>
         {
-            using var dlg = new FolderBrowserDialog();
+            using FolderBrowserDialog dlg = new FolderBrowserDialog();
             if (Directory.Exists(folderBox.Text)) dlg.SelectedPath = folderBox.Text;
             if (dlg.ShowDialog() == DialogResult.OK) folderBox.Text = dlg.SelectedPath;
         };
 
         // Row 2: command
-        var cmdIcon = new Label
+        Label cmdIcon = new Label
         {
-            Text = "❯", BackColor = BgCard, ForeColor = FgDim,
-            AutoSize = true, Location = new Point(10, 68),
+            Text = "Cmd:", BackColor = BgCard, ForeColor = FgDim,
+            Font = new Font("Segoe UI", 9), AutoSize = true,
+            Location = new Point(10, 70),
         };
         cmdBox = MakeInput(slot.Preset.Command, new Font("Cascadia Mono", 9), FgYellow);
-        cmdBox.Location = new Point(32, 68);
-        cmdBox.TextChanged += (_, _) => { slot.Preset.Command = cmdBox.Text; OnChanged?.Invoke(); };
+        cmdBox.Location = new Point(42, 68);
+        cmdBox.TextChanged += (object? s, EventArgs a) => { slot.Preset.Command = cmdBox.Text; OnChanged?.Invoke(); };
 
         // Row 3: status + time + remove
         statusLabel = new Label
@@ -193,8 +202,8 @@ public class CommandCard : Panel
             Font = new Font("Segoe UI", 9), AutoSize = true,
             Location = new Point(80, 96),
         };
-        var btnRemove = MakeBtn("✕ Remove", FgDim, 6);
-        btnRemove.Click += (_, _) => OnRemove?.Invoke();
+        Button btnRemove = MakeBtn("Remove", FgDim, 64, 24);
+        btnRemove.Click += (object? s, EventArgs a) => OnRemove?.Invoke();
 
         Controls.AddRange(new Control[] {
             dotLabel, labelBox, btnRun, btnStop, btnPeek,
@@ -204,19 +213,19 @@ public class CommandCard : Panel
         });
 
         // Store buttons for layout
-        _topButtons = new[] { btnPeek, btnStop, btnRun };
+        _topButtons = new Button[] { btnPeek, btnStop, btnRun };
         _browseBtn = btnBrowse;
         _removeBtn = btnRemove;
 
         // Click on the card background or non-interactive labels to select
-        Click += (_, _) => OnPeek?.Invoke();
-        dotLabel.Click += (_, _) => OnPeek?.Invoke();
-        folderIcon.Click += (_, _) => OnPeek?.Invoke();
-        cmdIcon.Click += (_, _) => OnPeek?.Invoke();
-        statusLabel.Click += (_, _) => OnPeek?.Invoke();
-        timeLabel.Click += (_, _) => OnPeek?.Invoke();
+        Click += (object? s, EventArgs a) => OnPeek?.Invoke();
+        dotLabel.Click += (object? s, EventArgs a) => OnPeek?.Invoke();
+        folderIcon.Click += (object? s, EventArgs a) => OnPeek?.Invoke();
+        cmdIcon.Click += (object? s, EventArgs a) => OnPeek?.Invoke();
+        statusLabel.Click += (object? s, EventArgs a) => OnPeek?.Invoke();
+        timeLabel.Click += (object? s, EventArgs a) => OnPeek?.Invoke();
 
-        Resize += (_, _) => DoLayout();
+        Resize += (object? s, EventArgs a) => DoLayout();
         DoLayout();
     }
 
@@ -226,35 +235,37 @@ public class CommandCard : Panel
     void DoLayout()
     {
         int w = ClientSize.Width;
+        if (w < 50) return; // not yet sized
+
         int rightX = w - 10;
-        foreach (var b in _topButtons)
+        foreach (Button b in _topButtons)
         {
             rightX -= b.Width + 2;
             b.Location = new Point(rightX, 6);
         }
-        labelBox.Width = rightX - labelBox.Left - 8;
+        labelBox.Width = Math.Max(60, rightX - labelBox.Left - 8);
 
         _browseBtn.Location = new Point(w - 10 - _browseBtn.Width, 40);
-        folderBox.Width = _browseBtn.Left - folderBox.Left - 4;
+        folderBox.Width = Math.Max(60, _browseBtn.Left - folderBox.Left - 4);
 
-        cmdBox.Width = w - cmdBox.Left - 14;
+        cmdBox.Width = Math.Max(60, w - cmdBox.Left - 14);
 
         _removeBtn.Location = new Point(w - 10 - _removeBtn.Width, 94);
     }
 
-    TextBox MakeInput(string text, Font font, Color fg) => new()
+    TextBox MakeInput(string text, Font font, Color fg) => new TextBox
     {
         Text = text, Font = font, ForeColor = fg,
         BackColor = BgInput, BorderStyle = BorderStyle.None,
         Height = 22,
     };
 
-    Button MakeBtn(string text, Color fg, int pad) => new()
+    Button MakeBtn(string text, Color fg, int width, int height) => new Button
     {
         Text = text, ForeColor = fg, BackColor = BgCard,
-        FlatStyle = FlatStyle.Flat, Font = new Font("Segoe UI", 9),
-        AutoSize = true, Padding = new Padding(pad, 0, pad, 0),
-        FlatAppearance = { BorderSize = 0, MouseOverBackColor = Color.FromArgb(60, 60, 90) },
+        FlatStyle = FlatStyle.Flat, Font = new Font("Segoe UI", 8),
+        Size = new Size(width, height),
+        FlatAppearance = { BorderSize = 1, BorderColor = Border, MouseOverBackColor = Color.FromArgb(60, 60, 90) },
     };
 
     static Color StatusColor(SlotStatus s) => s switch
@@ -275,9 +286,9 @@ public class CommandCard : Panel
     protected override void OnPaint(PaintEventArgs e)
     {
         base.OnPaint(e);
-        var color = _selected ? FgAccent : Border;
-        using var pen = new Pen(color, _selected ? 2f : 1f);
-        var r = ClientRectangle;
+        Color color = _selected ? FgAccent : Border;
+        using Pen pen = new Pen(color, _selected ? 2f : 1f);
+        Rectangle r = ClientRectangle;
         r.Inflate(-1, -1);
         e.Graphics.DrawRectangle(pen, r);
     }
@@ -317,7 +328,7 @@ public class MainForm : Form
         StartPosition = FormStartPosition.CenterScreen;
 
         // Load app icon for window title bar and taskbar
-        var iconPath = System.IO.Path.Combine(AppContext.BaseDirectory, "app.ico");
+        string iconPath = System.IO.Path.Combine(AppContext.BaseDirectory, "app.ico");
         if (File.Exists(iconPath))
             Icon = new Icon(iconPath);
 
@@ -337,7 +348,7 @@ public class MainForm : Form
         _timer.Tick += Tick;
         _timer.Start();
 
-        FormClosing += (_, _) =>
+        FormClosing += (object? s, FormClosingEventArgs a) =>
         {
             SaveAndStopAll();
             _timer.Stop();
@@ -347,8 +358,9 @@ public class MainForm : Form
     void BuildUI()
     {
         // ── Top bar ──
-        var topBar = new Panel { Dock = DockStyle.Top, Height = 50, BackColor = Bg };
-        var title = new Label
+        Panel topBar = new Panel { Dock = DockStyle.Top, Height = 50, BackColor = Bg };
+
+        Label title = new Label
         {
             Text = "Cmd Batcher", ForeColor = FgAccent,
             Font = new Font("Segoe UI Semibold", 14), AutoSize = true,
@@ -356,26 +368,30 @@ public class MainForm : Form
         };
         topBar.Controls.Add(title);
 
-        var btnAdd = MakeTopBtn("＋ Add", FgMain);
-        var btnRunAll = MakeTopBtn("▶  Run All", FgGreen);
-        var btnStopAll = MakeTopBtn("■  Stop All", FgRed);
+        Button btnAdd = MakeTopBtn("+ Add", FgMain);
+        Button btnRunAll = MakeTopBtn("Run All", FgGreen);
+        Button btnStopAll = MakeTopBtn("Stop All", FgRed);
 
-        btnAdd.Click += (_, _) => { AddEntry(); };
-        btnRunAll.Click += (_, _) => RunAll();
-        btnStopAll.Click += (_, _) => StopAll();
+        btnAdd.Click += (object? s, EventArgs a) => { AddEntry(); };
+        btnRunAll.Click += (object? s, EventArgs a) => RunAll();
+        btnStopAll.Click += (object? s, EventArgs a) => StopAll();
 
-        int rx = 0;
-        foreach (var b in new[] { btnStopAll, btnRunAll, btnAdd })
+        // Use a right-aligned FlowLayoutPanel for top buttons
+        FlowLayoutPanel btnPanel = new FlowLayoutPanel
         {
-            b.Anchor = AnchorStyles.Top | AnchorStyles.Right;
-            b.Location = new Point(ClientSize.Width - rx - b.Width - 16, 10);
-            rx += b.Width + 6;
-            topBar.Controls.Add(b);
-        }
-        Controls.Add(topBar);
+            Dock = DockStyle.Right,
+            FlowDirection = FlowDirection.RightToLeft,
+            AutoSize = true,
+            BackColor = Bg,
+            Padding = new Padding(0, 6, 8, 0),
+        };
+        btnPanel.Controls.Add(btnStopAll);
+        btnPanel.Controls.Add(btnRunAll);
+        btnPanel.Controls.Add(btnAdd);
+        topBar.Controls.Add(btnPanel);
 
         // ── Split panel ──
-        var split = new SplitContainer
+        SplitContainer split = new SplitContainer
         {
             Dock = DockStyle.Fill,
             Orientation = Orientation.Vertical,
@@ -418,21 +434,26 @@ public class MainForm : Form
         split.Panel2.Controls.Add(_outputBox);
         split.Panel2.Controls.Add(_outputHeader);
 
+        // Add split first, then topBar — WinForms docks last-added first,
+        // so topBar claims its 50px before split fills the remainder.
         Controls.Add(split);
+        Controls.Add(topBar);
 
         // Resize cards to fill width
-        _listPanel.Resize += (_, _) =>
+        _listPanel.Resize += (object? s, EventArgs a) =>
         {
             int w = _listPanel.ClientSize.Width - 30;
-            foreach (var c in _cards) c.Width = w;
+            foreach (CommandCard c in _cards) c.Width = w;
         };
     }
 
-    Button MakeTopBtn(string text, Color fg) => new()
+    Button MakeTopBtn(string text, Color fg) => new Button
     {
         Text = text, ForeColor = fg, BackColor = Color.FromArgb(40, 40, 64),
         FlatStyle = FlatStyle.Flat, Font = new Font("Segoe UI Semibold", 10),
-        AutoSize = true, Padding = new Padding(8, 2, 8, 2),
+        AutoSize = true, MinimumSize = new Size(70, 32),
+        Padding = new Padding(8, 2, 8, 2),
+        Margin = new Padding(3, 0, 3, 0),
         FlatAppearance = { BorderSize = 0, MouseOverBackColor = Color.FromArgb(60, 60, 90) },
     };
 
@@ -448,9 +469,9 @@ public class MainForm : Form
         int w = _listPanel.ClientSize.Width - 30;
         for (int i = 0; i < _presets.Count; i++)
         {
-            var slot = new ProcessSlot(_presets[i]);
+            ProcessSlot slot = new ProcessSlot(_presets[i]);
             _slots.Add(slot);
-            var card = new CommandCard(slot) { Width = w };
+            CommandCard card = new CommandCard(slot) { Width = w };
             int idx = i;
             card.OnRun     += () => RunOne(idx);
             card.OnStop    += () => StopOne(idx);
@@ -496,7 +517,7 @@ public class MainForm : Form
 
     void RunOne(int index)
     {
-        var slot = _slots[index];
+        ProcessSlot slot = _slots[index];
         if (slot.Status == SlotStatus.Running) return;
 
         slot.OutputLines.Clear();
@@ -507,11 +528,11 @@ public class MainForm : Form
         slot.EndTime = null;
         PresetStore.Save(_presets);
 
-        var t = new Thread(() =>
+        Thread t = new Thread(() =>
         {
             try
             {
-                var psi = new ProcessStartInfo
+                ProcessStartInfo psi = new ProcessStartInfo
                 {
                     FileName = "cmd.exe",
                     Arguments = $"/C {slot.Preset.Command}",
@@ -528,14 +549,14 @@ public class MainForm : Form
                 slot.Proc = Process.Start(psi)!;
 
                 // Read stdout and stderr on separate threads
-                var stdoutThread = new Thread(() =>
+                Thread stdoutThread = new Thread(() =>
                 {
                     try { while (slot.Proc.StandardOutput.ReadLine() is { } line) slot.AppendLine(line); }
                     catch { }
                 })
                 { IsBackground = true };
 
-                var stderrThread = new Thread(() =>
+                Thread stderrThread = new Thread(() =>
                 {
                     try { while (slot.Proc.StandardError.ReadLine() is { } line) slot.AppendLine(line); }
                     catch { }
@@ -567,7 +588,7 @@ public class MainForm : Form
 
     void StopOne(int index)
     {
-        var slot = _slots[index];
+        ProcessSlot slot = _slots[index];
         if (slot.Proc != null && slot.Status == SlotStatus.Running)
         {
             try { slot.Proc.Kill(true); } catch { }
@@ -604,7 +625,7 @@ public class MainForm : Form
 
         if (_selectedIndex >= 0 && _selectedIndex < _slots.Count)
         {
-            var slot = _slots[_selectedIndex];
+            ProcessSlot slot = _slots[_selectedIndex];
             _outputHeader.Text = $"Output: {slot.Preset.Label}";
             _outputHeader.ForeColor = slot.Status switch
             {
@@ -614,12 +635,12 @@ public class MainForm : Form
                 _ => FgDim,
             };
 
-            var sb = new StringBuilder();
-            foreach (var line in slot.OutputLines)
+            StringBuilder sb = new StringBuilder();
+            foreach (string line in slot.OutputLines)
                 sb.AppendLine(line);
 
-            var current = _outputBox.Text;
-            var next = sb.ToString();
+            string current = _outputBox.Text;
+            string next = sb.ToString();
             if (current != next)
             {
                 _outputBox.Text = next;

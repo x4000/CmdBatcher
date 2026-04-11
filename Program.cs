@@ -308,7 +308,7 @@ public class MainForm : Form
 
     public MainForm()
     {
-        Text = "⚡ Cmd Batcher";
+        Text = "Cmd Batcher";
         BackColor = Bg;
         ForeColor = FgMain;
         Size = new Size(1200, 760);
@@ -350,7 +350,7 @@ public class MainForm : Form
         var topBar = new Panel { Dock = DockStyle.Top, Height = 50, BackColor = Bg };
         var title = new Label
         {
-            Text = "⚡ Cmd Batcher", ForeColor = FgAccent,
+            Text = "Cmd Batcher", ForeColor = FgAccent,
             Font = new Font("Segoe UI Semibold", 14), AutoSize = true,
             Location = new Point(16, 12),
         };

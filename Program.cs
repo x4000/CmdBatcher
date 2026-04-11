@@ -3,7 +3,7 @@ using System.Text;
 using System.Text.Json;
 using System.Collections.Concurrent;
 
-namespace CommandRunner;
+namespace CmdBatcher;
 
 // ── Data ────────────────────────────────────────────────────────────────────
 
@@ -71,7 +71,7 @@ public class ProcessSlot
 public static class PresetStore
 {
     static readonly string Path = System.IO.Path.Combine(
-        AppContext.BaseDirectory, "command_runner_presets.json");
+        AppContext.BaseDirectory, "cmdbatcher_presets.json");
 
     public static List<CommandPreset> Load()
     {
@@ -111,7 +111,7 @@ public class CommandCard : Panel
     static readonly Color Border    = Color.FromArgb(69, 71, 90);
 
     public ProcessSlot Slot;
-    public event Action? OnRun, OnStop, OnPeek, OnRemove;
+    public event Action? OnRun, OnStop, OnPeek, OnRemove, OnChanged;
 
     Label dotLabel, statusLabel, timeLabel;
     TextBox labelBox, folderBox, cmdBox;
@@ -142,7 +142,7 @@ public class CommandCard : Panel
 
         labelBox = MakeInput(slot.Preset.Label, new Font("Segoe UI Semibold", 11), FgAccent);
         labelBox.Location = new Point(32, 8);
-        labelBox.TextChanged += (_, _) => slot.Preset.Label = labelBox.Text;
+        labelBox.TextChanged += (_, _) => { slot.Preset.Label = labelBox.Text; OnChanged?.Invoke(); };
 
         var btnRun  = MakeBtn("▶", FgGreen, 3);
         var btnStop = MakeBtn("■", FgRed, 3);
@@ -160,7 +160,7 @@ public class CommandCard : Panel
         };
         folderBox = MakeInput(slot.Preset.Folder, new Font("Cascadia Mono", 9), FgMain);
         folderBox.Location = new Point(32, 42);
-        folderBox.TextChanged += (_, _) => slot.Preset.Folder = folderBox.Text;
+        folderBox.TextChanged += (_, _) => { slot.Preset.Folder = folderBox.Text; OnChanged?.Invoke(); };
 
         var btnBrowse = MakeBtn("…", FgMain, 3);
         btnBrowse.Click += (_, _) =>
@@ -178,7 +178,7 @@ public class CommandCard : Panel
         };
         cmdBox = MakeInput(slot.Preset.Command, new Font("Cascadia Mono", 9), FgYellow);
         cmdBox.Location = new Point(32, 68);
-        cmdBox.TextChanged += (_, _) => slot.Preset.Command = cmdBox.Text;
+        cmdBox.TextChanged += (_, _) => { slot.Preset.Command = cmdBox.Text; OnChanged?.Invoke(); };
 
         // Row 3: status + time + remove
         statusLabel = new Label
@@ -207,6 +207,14 @@ public class CommandCard : Panel
         _topButtons = new[] { btnPeek, btnStop, btnRun };
         _browseBtn = btnBrowse;
         _removeBtn = btnRemove;
+
+        // Click on the card background or non-interactive labels to select
+        Click += (_, _) => OnPeek?.Invoke();
+        dotLabel.Click += (_, _) => OnPeek?.Invoke();
+        folderIcon.Click += (_, _) => OnPeek?.Invoke();
+        cmdIcon.Click += (_, _) => OnPeek?.Invoke();
+        statusLabel.Click += (_, _) => OnPeek?.Invoke();
+        timeLabel.Click += (_, _) => OnPeek?.Invoke();
 
         Resize += (_, _) => DoLayout();
         DoLayout();
@@ -291,6 +299,7 @@ public class MainForm : Form
     List<ProcessSlot> _slots = new();
     List<CommandCard> _cards = new();
     int _selectedIndex = -1;
+    bool _dirty;
 
     FlowLayoutPanel _listPanel;
     RichTextBox _outputBox;
@@ -299,7 +308,7 @@ public class MainForm : Form
 
     public MainForm()
     {
-        Text = "⚡ Command Runner";
+        Text = "⚡ Cmd Batcher";
         BackColor = Bg;
         ForeColor = FgMain;
         Size = new Size(1200, 760);
@@ -307,13 +316,18 @@ public class MainForm : Form
         Font = new Font("Segoe UI", 10);
         StartPosition = FormStartPosition.CenterScreen;
 
+        // Load app icon for window title bar and taskbar
+        var iconPath = System.IO.Path.Combine(AppContext.BaseDirectory, "app.ico");
+        if (File.Exists(iconPath))
+            Icon = new Icon(iconPath);
+
         _presets = PresetStore.Load();
         if (_presets.Count == 0)
             _presets.Add(new CommandPreset
             {
                 Label = "Example",
                 Folder = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-                Command = "echo Hello from Command Runner!"
+                Command = "echo Hello from Cmd Batcher!"
             });
 
         BuildUI();
@@ -336,7 +350,7 @@ public class MainForm : Form
         var topBar = new Panel { Dock = DockStyle.Top, Height = 50, BackColor = Bg };
         var title = new Label
         {
-            Text = "⚡ Command Runner", ForeColor = FgAccent,
+            Text = "⚡ Cmd Batcher", ForeColor = FgAccent,
             Font = new Font("Segoe UI Semibold", 14), AutoSize = true,
             Location = new Point(16, 12),
         };
@@ -438,10 +452,11 @@ public class MainForm : Form
             _slots.Add(slot);
             var card = new CommandCard(slot) { Width = w };
             int idx = i;
-            card.OnRun    += () => RunOne(idx);
-            card.OnStop   += () => StopOne(idx);
-            card.OnPeek   += () => SelectCard(idx);
-            card.OnRemove += () => RemoveEntry(idx);
+            card.OnRun     += () => RunOne(idx);
+            card.OnStop    += () => StopOne(idx);
+            card.OnPeek    += () => SelectCard(idx);
+            card.OnRemove  += () => RemoveEntry(idx);
+            card.OnChanged += () => _dirty = true;
             _cards.Add(card);
             _listPanel.Controls.Add(card);
         }
@@ -575,6 +590,12 @@ public class MainForm : Form
 
     void Tick(object? sender, EventArgs e)
     {
+        if (_dirty)
+        {
+            _dirty = false;
+            PresetStore.Save(_presets);
+        }
+
         for (int i = 0; i < _cards.Count; i++)
         {
             _slots[i].DrainQueue();

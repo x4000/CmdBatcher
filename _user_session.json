@@ -1,42 +1,54 @@
 [
   {
-    "Label": "AIW2 GOG",
-    "Folder": "D:\\build\\ContentBuilderAIWar2\\",
-    "Command": "gog_build.bat 5.805"
+    "Name": "AI War 2",
+    "Expanded": true,
+    "Commands": [
+      {
+        "Label": "AIW2 GOG",
+        "Folder": "D:\\build\\ContentBuilderAIWar2\\",
+        "Command": "gog_build.bat 5.805"
+      },
+      {
+        "Label": "AIW2 Steam",
+        "Folder": "D:\\build\\ContentBuilderAIWar2\\",
+        "Command": "run_build.bat 5.805"
+      }
+    ]
   },
   {
-    "Label": "AIW2 Steam",
-    "Folder": "D:\\build\\ContentBuilderAIWar2\\",
-    "Command": "run_build.bat 5.805"
-  },
-  {
-    "Label": "HotM EGS",
-    "Folder": "D:\\build\\ContentBuilderHotM\\",
-    "Command": "egs_build.bat 1.010"
-  },
-  {
-    "Label": "HotM GOG",
-    "Folder": "D:\\build\\ContentBuilderHotM\\",
-    "Command": "gog_build.bat 1.010"
-  },
-  {
-    "Label": "HotM Steam",
-    "Folder": "D:\\build\\ContentBuilderHotM\\",
-    "Command": "run_build.bat 1.010"
-  },
-  {
-    "Label": "HotM Steam Beta",
-    "Folder": "D:\\build\\ContentBuilderHotM\\",
-    "Command": "run_build_beta.bat 1.010beta"
-  },
-  {
-    "Label": "HotM Steam Playtest",
-    "Folder": "D:\\build\\ContentBuilderHotMPlaytest\\",
-    "Command": "run_build.bat 1.010"
-  },
-  {
-    "Label": "HotM Steam Demo",
-    "Folder": "D:\\build\\ContentBuilderHotMDemo",
-    "Command": "run_build.bat 1.010"
+    "Name": "HotM",
+    "Expanded": false,
+    "Commands": [
+      {
+        "Label": "HotM EGS",
+        "Folder": "D:\\build\\ContentBuilderHotM\\",
+        "Command": "egs_build.bat 1.010"
+      },
+      {
+        "Label": "HotM GOG",
+        "Folder": "D:\\build\\ContentBuilderHotM\\",
+        "Command": "gog_build.bat 1.010"
+      },
+      {
+        "Label": "HotM Steam",
+        "Folder": "D:\\build\\ContentBuilderHotM\\",
+        "Command": "run_build.bat 1.010"
+      },
+      {
+        "Label": "HotM Steam Beta",
+        "Folder": "D:\\build\\ContentBuilderHotM\\",
+        "Command": "run_build_beta.bat 1.010beta"
+      },
+      {
+        "Label": "HotM Steam Playtest",
+        "Folder": "D:\\build\\ContentBuilderHotMPlaytest\\",
+        "Command": "run_build.bat 1.010"
+      },
+      {
+        "Label": "HotM Steam Demo",
+        "Folder": "D:\\build\\ContentBuilderHotMDemo",
+        "Command": "run_build.bat 1.010"
+      }
+    ]
   }
 ]

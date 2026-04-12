@@ -1034,14 +1034,22 @@ public class MainForm : Form
             && _selCmd >= 0 && _selCmd < _slots[_selGroup].Count)
         {
             ProcessSlot slot = _slots[_selGroup][_selCmd];
-            _outputHeader.Text = $"Output: {slot.Preset.Label}";
-            _outputHeader.ForeColor = slot.Status switch
+            _outputHeaderLabel.Text = $"Output: {slot.Preset.Label}";
+            _outputHeaderLabel.ForeColor = slot.Status switch
             {
                 SlotStatus.Running => FgAccent,
                 SlotStatus.Done => FgGreen,
                 SlotStatus.Error => FgRed,
                 _ => FgDim,
             };
+
+            // Periodic full refresh every ~2 seconds to catch retroactive line changes
+            _ticksSinceFullRefresh++;
+            if (_ticksSinceFullRefresh >= 10)
+            {
+                _ticksSinceFullRefresh = 0;
+                _outputLineCount = 0; // force full re-render
+            }
 
             int totalLines = slot.OutputLines.Count;
             if (totalLines != _outputLineCount)

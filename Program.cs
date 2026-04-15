@@ -78,11 +78,15 @@ public class ProcessSlot
 
 public static class PresetStore
 {
+    static readonly string SettingsDir = System.IO.Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+        "ArcenSettings", "CmdBatcher");
+
     static readonly string Path = System.IO.Path.Combine(
-        AppContext.BaseDirectory, "_user_session.json");
+        SettingsDir, "_user_session.json");
 
     static readonly string LegacyPath = System.IO.Path.Combine(
-        AppContext.BaseDirectory, "cmdbatcher_presets.json");
+        SettingsDir, "cmdbatcher_presets.json");
 
     public static List<CommandGroup> Load()
     {
@@ -133,6 +137,7 @@ public static class PresetStore
     {
         try
         {
+            Directory.CreateDirectory(SettingsDir);
             File.WriteAllText(Path,
                 JsonSerializer.Serialize(groups, new JsonSerializerOptions { WriteIndented = true }));
         }

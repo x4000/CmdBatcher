@@ -23,32 +23,65 @@ public class CommandGroup
 
 public enum SlotStatus { Idle, Running, Done, Error }
 
+// A piece of process output. Partial chunks are text that has been printed but
+// not yet terminated by a newline -- interactive prompts like "Password: " and
+// progress lines that rewrite themselves with a bare CR. They're shown right
+// away and then replaced in place as the rest of the line arrives.
+public readonly record struct OutputChunk(string Text, bool IsPartial, int Source);
+
 public class ProcessSlot
 {
+    public const int SourceOther = 0;
+    public const int SourceStdout = 1;
+    public const int SourceStderr = 2;
+
     public CommandPreset Preset;
     public SlotStatus Status = SlotStatus.Idle;
     public Process? Proc;
     public StreamWriter? StdinWriter;
-    public ConcurrentQueue<string> OutputQueue = new();
+    public ConcurrentQueue<OutputChunk> OutputQueue = new();
     public List<string> OutputLines = new();
     public int? ExitCode;
     public DateTime? StartTime;
     public DateTime? EndTime;
     public const int MaxLines = 800;
 
+    // Which stream owns the trailing partial line, or SourceOther if the last
+    // line in OutputLines is already final.
+    int _partialOwner = SourceOther;
+
     public ProcessSlot(CommandPreset preset) => Preset = preset;
 
     public void AppendLine(string line)
     {
-        OutputQueue.Enqueue(line);
+        OutputQueue.Enqueue(new OutputChunk(line, false, SourceOther));
+    }
+
+    public void Append(OutputChunk chunk)
+    {
+        OutputQueue.Enqueue(chunk);
+    }
+
+    public void ClearOutput()
+    {
+        OutputLines.Clear();
+        _partialOwner = SourceOther;
     }
 
     public bool DrainQueue()
     {
         bool any = false;
-        while (OutputQueue.TryDequeue(out string? line))
+        while (OutputQueue.TryDequeue(out OutputChunk chunk))
         {
-            OutputLines.Add(line);
+            // Overwrite the trailing partial line only when it came from this
+            // same stream. If the other stream got a line in edgewise since,
+            // leave that partial standing rather than clobbering it.
+            if (_partialOwner != SourceOther && _partialOwner == chunk.Source && OutputLines.Count > 0)
+                OutputLines.RemoveAt(OutputLines.Count - 1);
+
+            OutputLines.Add(chunk.Text);
+            _partialOwner = chunk.IsPartial ? chunk.Source : SourceOther;
+
             if (OutputLines.Count > MaxLines)
                 OutputLines.RemoveAt(0);
             any = true;
@@ -71,6 +104,108 @@ public class ProcessSlot
             if (ExitCode.HasValue) t += $"  (exit {ExitCode})";
             return t;
         }
+    }
+}
+
+// ── Output pump ─────────────────────────────────────────────────────────────
+
+// Reads a redirected stream character by character instead of line by line.
+// StreamReader.ReadLine() only returns once it sees a line terminator, so a
+// prompt printed without one -- "Steam Guard code: ", "Password: ", "[Y/n] " --
+// sits invisibly in the buffer and the command just looks hung. This pump
+// surfaces whatever is pending as a provisional line and rewrites it in place
+// once the real terminator shows up.
+public static class StreamPump
+{
+    // How long text can sit unterminated before we show it anyway.
+    const int IdleFlushMs = 200;
+
+    public static Thread Start(StreamReader reader, ProcessSlot slot, int source)
+    {
+        StringBuilder pending = new();
+        object gate = new();
+        string? shown = null;   // partial text currently displayed, if any
+        bool done = false;
+
+        // Caller must hold gate.
+        void Emit(string text, bool partial)
+        {
+            if (partial && text == shown) return;
+            slot.Append(new OutputChunk(text, partial, source));
+            shown = partial ? text : null;
+        }
+
+        Thread watchdog = new Thread(() =>
+        {
+            while (true)
+            {
+                Thread.Sleep(IdleFlushMs);
+                lock (gate)
+                {
+                    if (done) return;
+                    if (pending.Length > 0) Emit(pending.ToString(), partial: true);
+                }
+            }
+        })
+        { IsBackground = true };
+
+        Thread pump = new Thread(() =>
+        {
+            char[] buf = new char[4096];
+            bool pendingCR = false;
+            try
+            {
+                int n;
+                while ((n = reader.Read(buf, 0, buf.Length)) > 0)
+                {
+                    lock (gate)
+                    {
+                        for (int i = 0; i < n; i++)
+                        {
+                            char ch = buf[i];
+
+                            if (pendingCR)
+                            {
+                                pendingCR = false;
+                                // CRLF ends the line for good. A bare CR is a
+                                // progress-style rewrite, so keep it partial and
+                                // let the next text overwrite it.
+                                bool isCrLf = ch == '\n';
+                                Emit(pending.ToString(), partial: !isCrLf);
+                                pending.Clear();
+                                if (isCrLf) continue;
+                            }
+
+                            if (ch == '\r') { pendingCR = true; continue; }
+
+                            if (ch == '\n')
+                            {
+                                Emit(pending.ToString(), partial: false);
+                                pending.Clear();
+                                continue;
+                            }
+
+                            pending.Append(ch);
+                        }
+                    }
+                }
+            }
+            catch { }
+            finally
+            {
+                lock (gate)
+                {
+                    // Whatever was still buffered at EOF is now final.
+                    if (pending.Length > 0) Emit(pending.ToString(), partial: false);
+                    done = true;
+                }
+            }
+        })
+        { IsBackground = true };
+
+        watchdog.Start();
+        pump.Start();
+        return pump;
     }
 }
 
@@ -624,7 +759,7 @@ public class MainForm : Form
             if (_selGroup >= 0 && _selGroup < _slots.Count
                 && _selCmd >= 0 && _selCmd < _slots[_selGroup].Count)
             {
-                _slots[_selGroup][_selCmd].OutputLines.Clear();
+                _slots[_selGroup][_selCmd].ClearOutput();
             }
             _outputLineCount = 0;
             _outputBox.Text = "";
@@ -881,7 +1016,7 @@ public class MainForm : Form
         ProcessSlot slot = _slots[g][c];
         if (slot.Status == SlotStatus.Running) return;
 
-        slot.OutputLines.Clear();
+        slot.ClearOutput();
         while (slot.OutputQueue.TryDequeue(out _)) { }
         slot.Status = SlotStatus.Running;
         slot.ExitCode = null;
@@ -911,23 +1046,14 @@ public class MainForm : Form
                 slot.Proc = Process.Start(psi)!;
                 slot.StdinWriter = slot.Proc.StandardInput;
 
-                // Read stdout and stderr on separate threads
-                Thread stdoutThread = new Thread(() =>
-                {
-                    try { while (slot.Proc.StandardOutput.ReadLine() is { } line) slot.AppendLine(line); }
-                    catch { }
-                })
-                { IsBackground = true };
+                // Read stdout and stderr on separate threads. These pump
+                // characters rather than lines, so a prompt with no trailing
+                // newline still reaches the UI instead of looking like a hang.
+                Thread stdoutThread = StreamPump.Start(
+                    slot.Proc.StandardOutput, slot, ProcessSlot.SourceStdout);
+                Thread stderrThread = StreamPump.Start(
+                    slot.Proc.StandardError, slot, ProcessSlot.SourceStderr);
 
-                Thread stderrThread = new Thread(() =>
-                {
-                    try { while (slot.Proc.StandardError.ReadLine() is { } line) slot.AppendLine(line); }
-                    catch { }
-                })
-                { IsBackground = true };
-
-                stdoutThread.Start();
-                stderrThread.Start();
                 slot.Proc.WaitForExit();
                 stdoutThread.Join(2000);
                 stderrThread.Join(2000);
